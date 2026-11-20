@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: incubacion-avicola-api
+    runtime: docker
+    plan: free
+    healthCheckPath: /health.php
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: API_TOKEN
+        generateValue: true
+      - key: APP_TIMEZONE
+        value: America/Guayaquil
