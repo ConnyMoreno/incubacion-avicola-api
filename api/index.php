@@ -49,7 +49,7 @@ try {
     $db->exec("SET TIME ZONE 'UTC'");
     $data=$_SERVER['REQUEST_METHOD']==='POST' ? readBody() : [];
     $id=integer($data['id_incubadora'] ?? $_GET['id_incubadora'] ?? 1);
-    $incubator=query($db,'SELECT * FROM incubadoras WHERE id_incubadora=? AND activa=1',[$id])->fetch();
+    $incubator=query($db,'SELECT * FROM incubadoras WHERE id_incubadora=? AND activa IS TRUE',[$id])->fetch();
     if (!$incubator) fail('La incubadora no existe o está inactiva.',404);
     if ($action==='estado') {
         $cycle=currentCycle($db,$id);
@@ -84,7 +84,7 @@ try {
         $flags=['alertas_activas','alerta_temperatura','alerta_humedad','alerta_energia','alerta_conexion','notificacion_app','notificacion_telefono','alerta_sonora'];
         $args=[$id];foreach ($flags as $name) {
             if (!array_key_exists($name,$data) || !in_array($data[$name],[true,false,0,1],true)) fail('Preferencia inválida: '.$name,422);
-            $args[]=(int)$data[$name];
+            $args[]=(bool)$data[$name];
         }
         $name=trim((string)($data['nombre_usuario'] ?? 'Nayeli'));
         if ($name==='' || strlen($name)>100) fail('Nombre inválido.',422);
@@ -106,7 +106,7 @@ try {
         $power=$data['energia_disponible'] ?? true;
         if (!in_array($power,[true,false,0,1],true)) fail('Estado de energía inválido.',422);
         $cycle=currentCycle($db,$id);
-        $stmt=query($db,"INSERT INTO lecturas (id_incubadora,id_ciclo,temperatura,humedad,energia_disponible,medida_en) VALUES (?,?,?,?,?,CURRENT_TIMESTAMP AT TIME ZONE 'UTC') RETURNING id_lectura",[$id,$cycle?$cycle['id_ciclo']:null,$t,$h,(int)$power]);
+        $stmt=query($db,"INSERT INTO lecturas (id_incubadora,id_ciclo,temperatura,humedad,energia_disponible,medida_en) VALUES (?,?,?,?,?,CURRENT_TIMESTAMP AT TIME ZONE 'UTC') RETURNING id_lectura",[$id,$cycle?$cycle['id_ciclo']:null,$t,$h,(bool)$power]);
         respond(['ok'=>true,'id_lectura'=>(int)$stmt->fetchColumn()],201);
     }
 } catch (Throwable $e) {
