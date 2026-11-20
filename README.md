@@ -5,6 +5,7 @@ Aplicación Android y API PHP para Render conectada a PostgreSQL en Neon.
 ## Despliegue de la API
 
 Render debe usar el runtime **Docker**, con `Dockerfile` en la raíz del repositorio. El servicio incluye el endpoint de salud `/health.php`.
+Para revisar la conexión con PostgreSQL y confirmar que existen las tablas que usa la API, abre `/diagnostico.php` en el dominio de Render.
 
 La API usa PDO con el controlador `pdo_pgsql`; no se conecta a MySQL. Configura en Render una de estas opciones:
 
