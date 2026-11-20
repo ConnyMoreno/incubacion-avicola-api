@@ -21,7 +21,7 @@ try {
         PDO::ATTR_TIMEOUT => 10,
     ]);
     $schema = (string)$db->query('SELECT current_schema()')->fetchColumn();
-    $tables = ['incubadoras', 'etapas_incubacion', 'ciclos_incubacion', 'configuracion', 'lecturas', 'alertas'];
+    $tables = ['incubadoras', 'sensores', 'historial_incubaciones', 'parametros_por_dia', 'configuracion_alertas', 'lecturas', 'alertas'];
     $marks = implode(',', array_fill(0, count($tables), '?'));
     $stmt = $db->prepare("SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_name IN ($marks)");
     $stmt->execute(array_merge([$schema], $tables));

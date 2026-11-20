@@ -39,6 +39,9 @@ function postgresSettings(): array {
 
 return [
     'database' => postgresSettings(),
-    'api_token' => envValue('API_TOKEN') ?? throw new RuntimeException('Falta configurar la variable de entorno: API_TOKEN'),
+    // The health/diagnostic endpoint must be able to check PostgreSQL even
+    // before the API token is configured. Protected API routes still reject an
+    // empty token in index.php.
+    'api_token' => envValue('API_TOKEN'),
     'timezone' => getenv('APP_TIMEZONE') ?: 'America/Guayaquil',
 ];
