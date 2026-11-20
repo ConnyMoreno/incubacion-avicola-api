@@ -18,7 +18,7 @@ import java.util.concurrent.Executors;
 final class IncubacionApi implements AutoCloseable {
     interface Result { void done(JSONObject json, String error); }
 
-    static final String DEFAULT_URL = "https://incubacion-avicola-api-1.onrender.com/index.php";
+    static final String DEFAULT_URL = "https://incubacion-avicola-api-2.onrender.com/index.php";
     final String endpoint;
     final String token;
     final int incubadora;

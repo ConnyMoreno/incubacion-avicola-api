@@ -41,12 +41,9 @@ try {
     $methods=['estado'=>'GET','historial'=>'GET','guardar_configuracion'=>'POST','registrar_lectura'=>'POST'];
     if (!isset($methods[$action])) fail('Acción desconocida.',404);
     if ($_SERVER['REQUEST_METHOD']!==$methods[$action]) { header('Allow: '.$methods[$action]);fail('Método no permitido.',405); }
-    $databaseUrl = parse_url($cfg['database_url']);
-    if (!$databaseUrl || empty($databaseUrl['host']) || empty($databaseUrl['path'])) {
-        throw new RuntimeException('DATABASE_URL de PostgreSQL inválida.');
-    }
-    $dsn = 'pgsql:host='.$databaseUrl['host'].';port='.($databaseUrl['port'] ?? 5432).';dbname='.ltrim($databaseUrl['path'], '/').';sslmode=require';
-    $db=new PDO($dsn,rawurldecode($databaseUrl['user'] ?? ''),rawurldecode($databaseUrl['pass'] ?? ''),[
+    $pg = $cfg['database'];
+    $dsn = 'pgsql:host='.$pg['host'].';port='.$pg['port'].';dbname='.$pg['database'].';sslmode=require';
+    $db=new PDO($dsn,$pg['user'],$pg['password'],[
         PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false
     ]);
     $db->exec("SET TIME ZONE 'UTC'");
@@ -100,7 +97,7 @@ try {
         $cycle=currentCycle($db,$id);
         if ($cycle) query($db,'UPDATE ciclos_incubacion SET fecha_inicio=? WHERE id_ciclo=?',[$date,$cycle['id_ciclo']]);
         else query($db,"INSERT INTO ciclos_incubacion (id_incubadora,nombre,fecha_inicio) VALUES (?,'Ciclo de incubación',?)",[$id,$date]);
-        $db->commit();respond(['ok'=>true,'mensaje'=>'Configuración guardada en MySQL.']);
+        $db->commit();respond(['ok'=>true,'mensaje'=>'Configuración guardada en PostgreSQL.']);
     }
     if ($action==='registrar_lectura') {
         foreach (['temperatura','humedad'] as $field) if (!isset($data[$field]) || !is_numeric($data[$field]) || !is_finite((float)$data[$field])) fail('Lectura inválida.',422);
@@ -109,11 +106,11 @@ try {
         $power=$data['energia_disponible'] ?? true;
         if (!in_array($power,[true,false,0,1],true)) fail('Estado de energía inválido.',422);
         $cycle=currentCycle($db,$id);
-        query($db,"INSERT INTO lecturas (id_incubadora,id_ciclo,temperatura,humedad,energia_disponible,medida_en) VALUES (?,?,?,?,?,CURRENT_TIMESTAMP AT TIME ZONE 'UTC')",[$id,$cycle?$cycle['id_ciclo']:null,$t,$h,(int)$power]);
-        respond(['ok'=>true,'id_lectura'=>$db->lastInsertId()],201);
+        $stmt=query($db,"INSERT INTO lecturas (id_incubadora,id_ciclo,temperatura,humedad,energia_disponible,medida_en) VALUES (?,?,?,?,?,CURRENT_TIMESTAMP AT TIME ZONE 'UTC') RETURNING id_lectura",[$id,$cycle?$cycle['id_ciclo']:null,$t,$h,(int)$power]);
+        respond(['ok'=>true,'id_lectura'=>(int)$stmt->fetchColumn()],201);
     }
 } catch (Throwable $e) {
     if (isset($db) && $db->inTransaction()) $db->rollBack();
     error_log('Incubacion API: '.$e->getMessage());
-    fail('No se pudo consultar MySQL. Revisa la configuración del servidor y las tablas.',500);
+    fail('No se pudo consultar PostgreSQL. Revisa las variables de conexión de Neon, las tablas y los registros de Render.',500);
 }
