@@ -20,10 +20,11 @@ try {
         PDO::ATTR_EMULATE_PREPARES => false,
         PDO::ATTR_TIMEOUT => 10,
     ]);
+    $schema = (string)$db->query('SELECT current_schema()')->fetchColumn();
     $tables = ['incubadoras', 'etapas_incubacion', 'ciclos_incubacion', 'configuracion', 'lecturas', 'alertas'];
     $marks = implode(',', array_fill(0, count($tables), '?'));
-    $stmt = $db->prepare("SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() AND table_name IN ($marks)");
-    $stmt->execute($tables);
+    $stmt = $db->prepare("SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_name IN ($marks)");
+    $stmt->execute(array_merge([$schema], $tables));
     $present = array_column($stmt->fetchAll(), 'table_name');
     $missing = array_values(array_diff($tables, $present));
     report([
@@ -31,7 +32,7 @@ try {
         'servicio' => 'incubacion-api',
         'motor' => 'PostgreSQL / Neon',
         'conexion' => 'establecida',
-        'esquema' => current_schema(),
+        'esquema' => $schema,
         'tablas_faltantes' => $missing,
     ], $missing === [] ? 200 : 503);
 } catch (Throwable $e) {
