@@ -36,6 +36,11 @@ function currentCycle(PDO $db, int $id) {
          WHERE id_incubadora=? AND estado='en_proceso'
          ORDER BY id_incubacion DESC LIMIT 1",[$id])->fetch() ?: null;
 }
+function currentSensor(PDO $db, int $id): ?array {
+    return query($db,
+        'SELECT id_sensor,id_incubadora,activo FROM sensores WHERE id_incubadora=? AND activo IS TRUE ORDER BY id_sensor LIMIT 1',
+        [$id])->fetch() ?: null;
+}
 function stage(PDO $db, $cycle, string $tz) {
     if (!$cycle) return null;
     $start=new DateTimeImmutable($cycle['fecha_inicio'],new DateTimeZone($tz));
@@ -74,7 +79,23 @@ try {
     $methods=['estado'=>'GET','historial'=>'GET','guardar_configuracion'=>'POST','registrar_lectura'=>'POST'];
     if (!isset($methods[$action])) fail('Acción desconocida.',404);
     if ($_SERVER['REQUEST_METHOD']!==$methods[$action]) { header('Allow: '.$methods[$action]);fail('Método no permitido.',405); }
-    $pg = $cfg['database'];
+    // La configuración principal ya entrega los datos separados. También
+    // aceptamos DATABASE_URL para instalaciones que usen la cadena de Neon.
+    $pg = $cfg['database'] ?? null;
+    if (!is_array($pg)) {
+        $databaseUrl = $cfg['database_url'] ?? getenv('DATABASE_URL') ?: '';
+        $parts = parse_url($databaseUrl);
+        if ($parts === false || empty($parts['host']) || empty($parts['path']) || empty($parts['user']) || !array_key_exists('pass', $parts)) {
+            throw new RuntimeException('DATABASE_URL de PostgreSQL inválida.');
+        }
+        $pg = [
+            'host' => $parts['host'],
+            'port' => (int)($parts['port'] ?? 5432),
+            'database' => rawurldecode(ltrim($parts['path'], '/')),
+            'user' => rawurldecode($parts['user']),
+            'password' => rawurldecode($parts['pass']),
+        ];
+    }
     $dsn = 'pgsql:host='.$pg['host'].';port='.$pg['port'].';dbname='.$pg['database'].';sslmode=require';
     $db=new PDO($dsn,$pg['user'],$pg['password'],[
         PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false
@@ -87,6 +108,7 @@ try {
 
     if ($action==='estado') {
         $cycle=currentCycle($db,$id);
+        $sensor=currentSensor($db,$id);
         $latest=query($db,
             'SELECT l.id_lectura,h.id_incubadora,l.id_incubacion AS id_ciclo,l.temperatura,l.humedad,
                     TRUE AS energia_disponible,l.fecha_hora AS medida_en
@@ -99,7 +121,7 @@ try {
              FROM alertas a JOIN lecturas l ON l.id_lectura=a.id_lectura
              JOIN sensores s ON s.id_sensor=l.id_sensor
              WHERE s.id_incubadora=? ORDER BY a.fecha_hora DESC,a.id_alerta DESC LIMIT 20",[$id])->fetchAll();
-        respond(['ok'=>true,'incubadora'=>$incubator,'ciclo'=>$cycle,
+        respond(['ok'=>true,'incubadora'=>$incubator,'sensor'=>$sensor,'ciclo'=>$cycle,
             'etapa'=>stage($db,$cycle,$cfg['timezone']),'configuracion'=>configuration($db,$id),
             'lectura'=>$latest,'alertas'=>$alerts,'etapas'=>incubationStages($db),'timezone'=>$cfg['timezone']]);
     }
@@ -156,9 +178,9 @@ try {
         if ($t < -100 || $t>150 || $h<0 || $h>100) fail('Lectura fuera de límites físicos.',422);
         $cycle=currentCycle($db,$id);
         if (!$cycle) fail('Primero configura la fecha de inicio del proceso de incubación.',409);
-        $sensor=query($db,'SELECT id_sensor FROM sensores WHERE id_incubadora=? AND activo IS TRUE ORDER BY id_sensor LIMIT 1',[$id])->fetchColumn();
+        $sensor=currentSensor($db,$id);
         if (!$sensor) fail('La incubadora aún no tiene un sensor activo configurado.',409);
-        $stmt=query($db,'INSERT INTO lecturas (id_sensor,id_incubacion,temperatura,humedad,fecha_hora) VALUES (?,?,?,?,CURRENT_TIMESTAMP) RETURNING id_lectura',[$sensor,$cycle['id_ciclo'],$t,$h]);
+        $stmt=query($db,'INSERT INTO lecturas (id_sensor,id_incubacion,temperatura,humedad,fecha_hora) VALUES (?,?,?,?,CURRENT_TIMESTAMP) RETURNING id_lectura',[$sensor['id_sensor'],$cycle['id_ciclo'],$t,$h]);
         respond(['ok'=>true,'id_lectura'=>(int)$stmt->fetchColumn()],201);
     }
 } catch (Throwable $e) {
