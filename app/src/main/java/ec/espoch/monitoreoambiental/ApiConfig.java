@@ -4,7 +4,7 @@ package ec.espoch.monitoreoambiental;
 public final class ApiConfig {
     private ApiConfig() { }
 
-    public static final String BASE_URL = "https://incubacion-avicola-api-4.onrender.com/";
+    public static final String BASE_URL = "https://incubacion-avicola-api-5.onrender.com/";
     public static final int CONNECT_TIMEOUT_MS = 15_000;
     public static final int READ_TIMEOUT_MS = 90_000;
     public static final int ID_INCUBADORA = 1;
