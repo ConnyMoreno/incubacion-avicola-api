@@ -99,7 +99,9 @@ function currentSensor(PDO $db, int $id): ?array {
 // CONEXIÓN Y AUTENTICACIÓN
 // ==========================================
 
+$apiPhase = 'inicio';
 try {
+    $apiPhase = 'configuracion';
     $cfg = require __DIR__ . '/config.php';
 
     $key = $_SERVER['HTTP_X_API_KEY'] ?? '';
@@ -152,6 +154,7 @@ try {
         . ';dbname=' . $pg['database']
         . ';sslmode=require';
 
+    $apiPhase = 'conexion PostgreSQL';
     $db = new PDO(
         $dsn,
         $pg['user'],
@@ -163,6 +166,7 @@ try {
         ]
     );
 
+    $apiPhase = 'zona horaria PostgreSQL';
     $db->exec("SET TIME ZONE 'UTC'");
 
     $data = $_SERVER['REQUEST_METHOD'] === 'POST'
@@ -427,11 +431,14 @@ try {
             }
         }
 
+        $apiPhase = 'guardar_configuracion: iniciar transaccion';
         $db->beginTransaction();
+        $apiPhase = 'guardar_configuracion: bloquear incubadora';
         query($db,
             'SELECT id_incubadora FROM public.incubadoras WHERE id_incubadora = ? FOR UPDATE',
             [$id]
         );
+        $apiPhase = 'guardar_configuracion: buscar configuracion';
         $existing = query($db,
             'SELECT id_configuracion FROM public.configuracion_alertas
              WHERE id_incubadora = ?
@@ -440,6 +447,7 @@ try {
         )->fetchColumn();
 
         if ($existing !== false) {
+            $apiPhase = 'guardar_configuracion: actualizar configuracion';
             query($db,
                 'UPDATE public.configuracion_alertas
                  SET alertas_activas = CAST(? AS boolean),
@@ -450,6 +458,7 @@ try {
                 [...$values, $existing]
             );
         } else {
+            $apiPhase = 'guardar_configuracion: insertar configuracion';
             query($db,
                 'INSERT INTO public.configuracion_alertas
                  (id_incubadora, alertas_activas, notificacion_app, alerta_sonora, fecha_actualizacion)
@@ -459,11 +468,13 @@ try {
         }
 
         if ($date !== null) {
+            $apiPhase = 'guardar_configuracion: buscar incubacion activa';
             $cycle = currentCycle($db, $id);
             if (!$cycle) {
                 $db->rollBack();
                 fail('No hay una incubación activa para actualizar la fecha de inicio.', 409);
             }
+            $apiPhase = 'guardar_configuracion: actualizar fecha';
             query($db,
                 'UPDATE public.historial_incubaciones
                  SET fecha_inicio = ? WHERE id_incubacion = ?',
@@ -471,6 +482,7 @@ try {
             );
         }
 
+        $apiPhase = 'guardar_configuracion: confirmar transaccion';
         $db->commit();
         respond(['ok' => true, 'mensaje' => 'Configuración guardada en PostgreSQL.']);
     }
@@ -564,11 +576,16 @@ try {
     }
 
 } catch (Throwable $e) {
+    // Log the original PostgreSQL exception before rollback, because rollback
+    // errors can otherwise hide the statement that first failed.
+    error_log('Incubacion API [' . $apiPhase . ']: ' . $e->getMessage());
     if (isset($db) && $db->inTransaction()) {
-        $db->rollBack();
+        try {
+            $db->rollBack();
+        } catch (Throwable $rollbackError) {
+            error_log('Incubacion API rollback: ' . $rollbackError->getMessage());
+        }
     }
-
-    error_log('Incubacion API: ' . $e->getMessage());
 
     // Return a SQLSTATE to authenticated clients without exposing SQL text,
     // credentials, or table data. The full exception remains in Render logs.
@@ -577,5 +594,6 @@ try {
         'ok' => false,
         'error' => 'Error interno al procesar la solicitud en PostgreSQL.',
         'codigo_error' => $sqlState,
+        'fase_error' => str_starts_with($apiPhase, 'guardar_configuracion:') ? $apiPhase : null,
     ], 500);
 }
