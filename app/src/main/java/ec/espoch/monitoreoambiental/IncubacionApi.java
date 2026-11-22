@@ -36,7 +36,9 @@ final class IncubacionApi implements AutoCloseable {
             int count;
             while ((count = in.read(buffer)) != -1) bytes.write(buffer, 0, count);
             JSONObject config = new JSONObject(bytes.toString("UTF-8"));
-            address = config.optString("url", address).trim();
+            // Ignore an empty URL in the private file and keep the Render default.
+            String configuredAddress = config.optString("url", "").trim();
+            if (!configuredAddress.isEmpty()) address = configuredAddress;
             apiToken = config.optString("api_token", config.optString("api_key", "")).trim();
             id = config.optInt("id_incubadora", ApiConfig.ID_INCUBADORA);
         } catch (Exception ignored) {
@@ -48,26 +50,26 @@ final class IncubacionApi implements AutoCloseable {
         incubadora = Math.max(1, id);
     }
 
-    void state(Result callback) { request(ApiConfig.ESTADO_URL, "", null, callback); }
+    void state(Result callback) { request("estado", "", null, callback); }
 
     void history(String period, Result callback) {
-        request(ApiConfig.HISTORIAL_URL, "&periodo=" + period, null, callback);
+        request("historial", "&periodo=" + period, null, callback);
     }
 
-    void save(JSONObject body, Result callback) { request(ApiConfig.GUARDAR_CONFIGURACION_URL, "", body, callback); }
+    void save(JSONObject body, Result callback) { request("guardar_configuracion", "", body, callback); }
 
     void recordReading(float temperature, float humidity, boolean power, Result callback) {
         try {
             JSONObject body = new JSONObject().put("id_incubadora", incubadora)
                     .put("temperatura", temperature).put("humedad", humidity)
                     .put("energia_disponible", power);
-            request(ApiConfig.REGISTRAR_LECTURA_URL, "", body, callback);
+            request("registrar_lectura", "", body, callback);
         } catch (Exception e) {
             callback.done(null, "No se pudo preparar la lectura.");
         }
     }
 
-    private void request(String route, String extra, JSONObject body, Result callback) {
+    private void request(String action, String extra, JSONObject body, Result callback) {
         if (closed) return;
         executor.execute(() -> {
             JSONObject result = null;
@@ -75,7 +77,8 @@ final class IncubacionApi implements AutoCloseable {
             HttpURLConnection connection = null;
             try {
                 if (token.isEmpty()) throw new IOException("Falta el token privado de la API.");
-                URL url = new URL(route + "&id_incubadora=" + incubadora + extra);
+                URL url = new URL(endpoint + "?accion=" + action
+                        + "&id_incubadora=" + incubadora + extra);
                 connection = (HttpURLConnection) url.openConnection();
                 connection.setRequestMethod(body == null ? "GET" : "POST");
                 connection.setConnectTimeout(ApiConfig.CONNECT_TIMEOUT_MS);
