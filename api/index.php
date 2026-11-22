@@ -435,7 +435,7 @@ try {
         $db->beginTransaction();
         $apiPhase = 'guardar_configuracion: bloquear incubadora';
         query($db,
-            'SELECT id_incubadora FROM public.incubadoras WHERE id_incubadora = ? FOR UPDATE',
+            'SELECT pg_advisory_xact_lock(CAST(? AS bigint))',
             [$id]
         );
         $apiPhase = 'guardar_configuracion: buscar configuracion';
