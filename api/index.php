@@ -570,8 +570,12 @@ try {
 
     error_log('Incubacion API: ' . $e->getMessage());
 
-    fail(
-        'Error interno al procesar la solicitud en PostgreSQL.',
-        500
-    );
+    // Return a SQLSTATE to authenticated clients without exposing SQL text,
+    // credentials, or table data. The full exception remains in Render logs.
+    $sqlState = $e instanceof PDOException ? (string)$e->getCode() : 'INTERNAL';
+    respond([
+        'ok' => false,
+        'error' => 'Error interno al procesar la solicitud en PostgreSQL.',
+        'codigo_error' => $sqlState,
+    ], 500);
 }
